@@ -3,8 +3,12 @@
 # 向 Server 发送监听请求
 请求监听某个地址，若两分钟内监听到新交易，则会将数据回传给客户端的 6013 端口的 `notify` 
 curl -X POST http://localhost:6012/monitor -H "Content-Type: application/json" -d '{"recipient":"2AyTuJkEEsF83ZujhXXzXeiXNtoyZ2Dnyf5T4bFiF4XG"}'
-- 若两分钟内有新交易产生，则客户端 6013 端口可获取到最新交易。
+- 若两分钟内有新交易产生，则客户端 6013 端口可获取到最新交易。且curl 的指令会返回最新交易
 - 若两分钟内无交易产生，则服务器将终止此次监听。
+
+![参数解释](image.png) 
+- to 是 用户的 USDC Token Address
+- Address 是用户真正的地址
 
 # 查询历史交易
 查询当前已经通知过的 n 笔交易（修改最后一个数字即可）
