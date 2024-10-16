@@ -3,9 +3,6 @@ import express from 'express';
 const app = express();
 app.use(express.json());
 
-// 指定要监控的接收者地址
-const recipientAddress = '你的接收者地址'; // 替换为实际地址
-
 // 客户端 HTTP 服务器
 app.post('/notify', (req, res) => {
     const { transaction } = req.body;
