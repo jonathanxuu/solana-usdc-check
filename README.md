@@ -11,8 +11,8 @@ curl -X POST http://localhost:6012/monitor -H "Content-Type: application/json" -
 - Address 是用户真正的地址
 
 # 查询历史交易
-查询当前已经通知过的 n 笔交易（修改最后一个数字即可）
-curl -X GET http://localhost:6012/transactions/2
+查询当前已经通知过的 n 笔交易（修改最后一个数字即可），按时间顺序排序，如果是1 则是最新的
+curl -X GET http://localhost:6012/transactions/1
 
 
 
