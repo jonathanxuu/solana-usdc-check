@@ -18,15 +18,23 @@ curl -X GET http://localhost:6012/transactions/1
 
 
 # 部署说明
-# 服务器 Server 
+## 服务器 Server 
 > 服务器启动在 6012 端口
 
 > 第一次启动的话：首先先加一个 screen 用于 debug：screen -S usdcserver
 执行 `ts-node src/server.ts`
+
+> 想要查看 debug 信息：screen -r usdcserver
+> 退出 debug 页面时，直接点击左上角关闭窗口即可
 
 ## 客户端（用于接收回传数据）
 > 客户端启动在 6013 端口
 
 > 第一次启动的话： 首先先加一个 screen 用于 debug：screen -S usdcclient
 执行 `ts-node src/app.ts`
+> 想要查看 debug 信息：screen -r usdcclient
+> 退出 debug 页面时，直接点击左上角关闭窗口即可
+
+
+
 
