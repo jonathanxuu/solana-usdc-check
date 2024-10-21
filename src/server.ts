@@ -24,6 +24,7 @@ const transactionSchema = new mongoose.Schema({
     amount: Number,
     address: String,
     time: Number,
+    type: String, // 新增字段，用来区分 USDC 和 SOL 交易
 });
 
 const dbTransaction = mongoose.model('Transaction', transactionSchema);
@@ -119,6 +120,7 @@ async function getRecentUSDCTransactions(recipient: string) {
                 address: recipient,
                 amount,
                 time: timestamp,
+                type: "USDC"
             };
         }
 
@@ -128,37 +130,119 @@ async function getRecentUSDCTransactions(recipient: string) {
     }
 }
 
+// 查询最近的 SOL 交易
+async function getRecentSOLTransactions(recipient: string) {
+    try {
+        const connection = new Connection('https://black-side-dawn.solana-devnet.quiknode.pro/34914fab50708164e45c152a3bb6135d85ae7611', {
+            commitment: 'confirmed',
+            wsEndpoint: 'wss://black-side-dawn.solana-devnet.quiknode.pro/34914fab50708164e45c152a3bb6135d85ae7611',
+        });        const recipientPublicKey = new PublicKey(recipient);
+        
+        const transactionSignatures = await connection.getSignaturesForAddress(recipientPublicKey, {
+            limit: 1,
+        });
+
+        if (transactionSignatures.length === 0) {
+            console.log('No transactions found for this address.');
+            return null;
+        }
+
+        const transactionDetails = await connection.getParsedTransaction(transactionSignatures[0].signature, 'confirmed');
+        if (!transactionDetails) return null;
+
+        const { transaction, meta } = transactionDetails;
+        const instructions = transaction.message.instructions;
+
+        const solTransfer = instructions.find(instruction => {
+            if ('parsed' in instruction) {
+                const parsedInstruction = instruction as ParsedInstruction;
+                return parsedInstruction?.parsed?.type === 'transfer';
+            }
+            return false;
+        });
+
+        if (solTransfer && 'parsed' in solTransfer) {
+            const parsedInstruction = solTransfer as ParsedInstruction;
+            const fromAddress = parsedInstruction.parsed.info.source;
+            const toAddress = parsedInstruction.parsed.info.destination;
+            const amount = parsedInstruction.parsed.info.lamports / 10 ** 9; // 转换为 SOL
+
+            const slot = transactionDetails.slot;
+            const timestamp = (await connection.getBlockTime(slot)) || 0;
+
+            return {
+                txHash: transactionSignatures[0].signature,
+                from: fromAddress,
+                to: toAddress,
+                address: recipient,
+                amount,
+                time: timestamp,
+                type: 'SOL', // 指明交易类型为 SOL
+            };
+        }
+
+        return null;
+    } catch (error) {
+        console.error('Error fetching SOL transaction:', error);
+    }
+}
+
 // HTTP 请求处理
 app.post('/monitor', async (req: any, res: any) => {
-    const { recipient } = req.body;
+    const { recipient, type } = req.body; // 从请求中获取 type 参数（USDC 或 SOL）
     if (!recipient) {
         return res.status(400).json({ error: 'Recipient address is required.' });
     }
 
     await connectToDatabase(); // 连接数据库
-    console.log("Monitoring transactions for:", recipient);
+    console.log(`Monitoring ${type || 'USDC and SOL'} transactions for:`, recipient);
 
     const interval = setInterval(async () => {
-        const currentTransaction = await getRecentUSDCTransactions(recipient);
-        if (currentTransaction) {
-            const isSaved = await saveTransaction(currentTransaction);
-            if (isSaved) {
-                console.log('New USDC transaction detected:', currentTransaction);
-                // 向客户端发送 POST 请求
-                try {
-                    await axios.post('http://localhost:6013/notify', {
-                        transaction: currentTransaction,
-                    });
-                    console.log('Transaction notification sent to client.');
-                } catch (error) {
-                    console.error('Error sending notification to client:', error);
-                }
+        let usdcTransaction, solTransaction;
+        if (type === 'USDC') {
+            usdcTransaction = await getRecentUSDCTransactions(recipient);
+        } else if (type === 'SOL') {
+            solTransaction = await getRecentSOLTransactions(recipient);
+        } else {
+            // 如果没有指定类型，先查询 USDC，如果没有找到再查询 SOL
+            usdcTransaction = await getRecentUSDCTransactions(recipient);
+            solTransaction = await getRecentSOLTransactions(recipient);
+        }
+        const newTransactions = [];
 
-                res.json({ action: 'newTransaction', transaction: currentTransaction });
-                clearInterval(interval); // 2分钟内查到则中断查询
+        // 检查 USDC 交易是否已存在于数据库中
+        if (usdcTransaction) {
+            const usdcSaved = await saveTransaction(usdcTransaction);
+            if (usdcSaved) {
+                console.log('New USDC transaction detected:', usdcTransaction);
+                newTransactions.push(usdcTransaction); // 将 USDC 交易添加到新交易数组
             }
         }
-    }, 10000); // 每 20 秒查询一次
+
+        if (solTransaction) {
+            const solSaved = await saveTransaction(solTransaction);
+            if (solSaved) {
+                console.log('New SOL transaction detected:', solTransaction);
+                newTransactions.push(solTransaction); // 将 SOL 交易添加到新交易数组
+            }
+        }
+
+        if (newTransactions.length > 0) {
+            // 向客户端发送 POST 请求，通知新交易
+            try {
+                await axios.post('http://localhost:6013/notify', {
+                    transactions: newTransactions, // 发送所有新交易
+                });
+                console.log('Transaction notification sent to client.');
+            } catch (error) {
+                console.error('Error sending notification to client:', error);
+            }
+
+            res.json({ action: 'newTransactions', transactions: newTransactions }); // 返回所有新交易
+            clearInterval(interval); // 查到则中断查询
+        }
+    }, 10000); // 每 10 秒查询一次
+
 
     // 设置 5 分钟超时
     setTimeout(() => {

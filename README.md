@@ -2,7 +2,34 @@
 
 # 向 Server 发送监听请求
 请求监听某个地址，若两分钟内监听到新交易，则会将数据回传给客户端的 6013 端口的 `notify` 
-curl -X POST http://localhost:6012/monitor -H "Content-Type: application/json" -d '{"recipient":"2AyTuJkEEsF83ZujhXXzXeiXNtoyZ2Dnyf5T4bFiF4XG"}'
+- 查询某个地址的 SOL 最新交易
+```bash
+curl -X POST http://localhost:6012/monitor \
+-H "Content-Type: application/json" \
+-d '{
+  "type": "SOL",
+  "recipient": "2AyTuJkEEsF83ZujhXXzXeiXNtoyZ2Dnyf5T4bFiF4XG"
+}'
+```
+- 查询某个地址的 USDC 最新交易
+
+```bash
+curl -X POST http://localhost:6012/monitor \
+-H "Content-Type: application/json" \
+-d '{
+  "type": "USDC",
+  "recipient": "2AyTuJkEEsF83ZujhXXzXeiXNtoyZ2Dnyf5T4bFiF4XG"
+}'
+```
+- 查询某个地址的 USDC 或 SOL 最新交易
+
+```bash
+curl -X POST http://localhost:6012/monitor \
+-H "Content-Type: application/json" \
+-d '{
+  "recipient": "2AyTuJkEEsF83ZujhXXzXeiXNtoyZ2Dnyf5T4bFiF4XG"
+}'
+```
 - 若两分钟内有新交易产生，则客户端 6013 端口的 `notify` 可获取到最新交易。且curl 的指令会返回最新交易
 - 若两分钟内无交易产生，则服务器将终止此次监听。
 
