@@ -196,6 +196,7 @@ app.post('/monitor', async (req: any, res: any) => {
 
     await connectToDatabase(); // 连接数据库
     console.log(`Monitoring ${type || 'USDC and SOL'} transactions for:`, recipient);
+    let responseSent = false; // Flag to track if a response has been sent
 
     const interval = setInterval(async () => {
         let usdcTransaction, solTransaction;
@@ -210,16 +211,16 @@ app.post('/monitor', async (req: any, res: any) => {
         }
         const newTransactions = [];
 
-        // 检查 USDC 交易是否已存在于数据库中
-        if (usdcTransaction) {
+        // 如果查的是 USDC 或者 全部
+        if (type !== 'SOL' && usdcTransaction) {
             const usdcSaved = await saveTransaction(usdcTransaction);
             if (usdcSaved) {
                 console.log('New USDC transaction detected:', usdcTransaction);
                 newTransactions.push(usdcTransaction); // 将 USDC 交易添加到新交易数组
             }
         }
-
-        if (solTransaction) {
+        // 如果查的是 SOL 或者 全部
+        if (type !== 'USDC' && solTransaction) {
             const solSaved = await saveTransaction(solTransaction);
             if (solSaved) {
                 console.log('New SOL transaction detected:', solTransaction);
@@ -237,9 +238,11 @@ app.post('/monitor', async (req: any, res: any) => {
             } catch (error) {
                 console.error('Error sending notification to client:', error);
             }
-
-            res.json({ action: 'newTransactions', transactions: newTransactions }); // 返回所有新交易
-            clearInterval(interval); // 查到则中断查询
+            if (!responseSent) { // Check if response has already been sent
+                res.json({ action: 'newTransactions', transactions: newTransactions });
+                responseSent = true; // Set flag to true
+                clearInterval(interval); // Clear interval if a transaction was found
+            }
         }
     }, 10000); // 每 10 秒查询一次
 
@@ -247,8 +250,12 @@ app.post('/monitor', async (req: any, res: any) => {
     // 设置 5 分钟超时
     setTimeout(() => {
         clearInterval(interval);
-        console.log('Monitoring ended due to timeout for:', recipient);
-    }, 2 * 60 * 1000); // 2 分钟
+        if (!responseSent) { // Check again before sending the timeout response
+            console.log('Monitoring ended due to timeout for:', recipient);
+            res.json({ action: "NoLatestTx", transactions: `No new ${type} transaction, the latest ${type} transaction already returned before and stored in mongoDB` });
+            responseSent = true; // Set flag to true
+        }
+    }, 1 * 60 * 1000); // 2 分钟
 });
 
 const PORT = 6012;
