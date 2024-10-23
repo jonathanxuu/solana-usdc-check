@@ -8,6 +8,7 @@ curl -X POST http://localhost:6012/monitor \
 -H "Content-Type: application/json" \
 -d '{
   "type": "SOL",
+  "network": "solana_devnet",
   "recipient": "2AyTuJkEEsF83ZujhXXzXeiXNtoyZ2Dnyf5T4bFiF4XG"
 }'
 ```
@@ -18,6 +19,7 @@ curl -X POST http://localhost:6012/monitor \
 -H "Content-Type: application/json" \
 -d '{
   "type": "USDC",
+  "network": "solana_devnet",
   "recipient": "2AyTuJkEEsF83ZujhXXzXeiXNtoyZ2Dnyf5T4bFiF4XG"
 }'
 ```
@@ -27,7 +29,8 @@ curl -X POST http://localhost:6012/monitor \
 curl -X POST http://localhost:6012/monitor \
 -H "Content-Type: application/json" \
 -d '{
-  "recipient": "2AyTuJkEEsF83ZujhXXzXeiXNtoyZ2Dnyf5T4bFiF4XG"
+  "network": "solana_devnet",
+  "recipient": "6hTqVqtBtE2edY7o3NsPXyGqc29YzhuQcZNapE8vRAhL"
 }'
 ```
 - 若两分钟内有新交易产生，则客户端 6013 端口的 `notify` 可获取到最新交易。且curl 的指令会返回最新交易
