@@ -11,6 +11,7 @@ import axios from 'axios';
 dotenv.config();
 
 const USDC_MINT_ADDRESS = '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU'; // Devnet 上 USDC 的 Mint 地址
+const USDC_MINT_ADDRESS_MAINNET = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'; // Mainnet 上 USDC 的 Mint 地址
 
 const mongoURI = 'mongodb://mongoadmin:secret@localhost:27017/?authSource=admin';
 const app = express();
@@ -24,7 +25,8 @@ const transactionSchema = new mongoose.Schema({
     amount: Number,
     address: String,
     time: Number,
-    type: String, // 新增字段，用来区分 USDC 和 SOL 交易
+    type: String, // 新增字段，用来区分 USDC 和 SOL 交易,
+    network: String // 新增字段，用于区分链 —— 目前：solana_mainnet, solana_devnet，默认mainnet
 });
 
 const dbTransaction = mongoose.model('Transaction', transactionSchema);
@@ -55,17 +57,28 @@ async function saveTransaction(transaction: any) {
     return true; // 返回 true 表示已保存
 }
 
-// 查询最近的 USDC 交易
-async function getRecentUSDCTransactions(recipient: string) {
-    try {
-        const connection = new Connection('https://black-side-dawn.solana-devnet.quiknode.pro/34914fab50708164e45c152a3bb6135d85ae7611', {
+// 根据网络选择连接
+function getConnection(network: string): Connection {
+    if (network === 'solana_devnet') {
+        return new Connection('https://black-side-dawn.solana-devnet.quiknode.pro/34914fab50708164e45c152a3bb6135d85ae7611', {
             commitment: 'confirmed',
             wsEndpoint: 'wss://black-side-dawn.solana-devnet.quiknode.pro/34914fab50708164e45c152a3bb6135d85ae7611',
         });
+    } else {
+        return new Connection('https://solana-mainnet.g.alchemy.com/v2/s_xcHr01DdA0yLNjjLMNXqg8vfZgflBp', {
+            commitment: 'confirmed',
+        });
+    }
+}
+
+// 查询最近的 USDC 交易
+async function getRecentUSDCTransactions(recipient: string, network: string) {
+    try {
+        const connection = getConnection(network);
 
         const recipientPublicKey = new PublicKey(recipient);
         const tokenAccountsResponse = await connection.getTokenAccountsByOwner(recipientPublicKey, {
-            mint: new PublicKey(USDC_MINT_ADDRESS),
+            mint: new PublicKey(network === "solana_devnet" ? USDC_MINT_ADDRESS: USDC_MINT_ADDRESS_MAINNET),
         });
 
         const tokenAccounts = tokenAccountsResponse.value;
@@ -86,7 +99,12 @@ async function getRecentUSDCTransactions(recipient: string) {
         }
 
         signatures.push(...accountSignatures.map(sig => sig.signature));
-        const transactionDetails = await connection.getParsedTransaction(signatures[0], 'confirmed');
+        const transactionDetails = await connection.getParsedTransaction(signatures[0], {
+            commitment: 'confirmed',
+            maxSupportedTransactionVersion: 0 // 添加这个参数
+        });            
+
+
         if (!transactionDetails) return null;
 
         const { transaction, meta } = transactionDetails;
@@ -120,7 +138,8 @@ async function getRecentUSDCTransactions(recipient: string) {
                 address: recipient,
                 amount,
                 time: timestamp,
-                type: "USDC"
+                type: "USDC",
+                network: network ? network : "solana_mainnet"
             };
         }
 
@@ -131,12 +150,10 @@ async function getRecentUSDCTransactions(recipient: string) {
 }
 
 // 查询最近的 SOL 交易
-async function getRecentSOLTransactions(recipient: string) {
+async function getRecentSOLTransactions(recipient: string, network: string) {
     try {
-        const connection = new Connection('https://black-side-dawn.solana-devnet.quiknode.pro/34914fab50708164e45c152a3bb6135d85ae7611', {
-            commitment: 'confirmed',
-            wsEndpoint: 'wss://black-side-dawn.solana-devnet.quiknode.pro/34914fab50708164e45c152a3bb6135d85ae7611',
-        });        const recipientPublicKey = new PublicKey(recipient);
+        const connection = getConnection(network);
+        const recipientPublicKey = new PublicKey(recipient);
         
         const transactionSignatures = await connection.getSignaturesForAddress(recipientPublicKey, {
             limit: 1,
@@ -147,7 +164,11 @@ async function getRecentSOLTransactions(recipient: string) {
             return null;
         }
 
-        const transactionDetails = await connection.getParsedTransaction(transactionSignatures[0].signature, 'confirmed');
+        const transactionDetails = await connection.getParsedTransaction(transactionSignatures[0].signature, {
+            commitment: 'confirmed',
+            maxSupportedTransactionVersion: 0 // 添加这个参数
+        });            
+
         if (!transactionDetails) return null;
 
         const { transaction, meta } = transactionDetails;
@@ -178,6 +199,7 @@ async function getRecentSOLTransactions(recipient: string) {
                 amount,
                 time: timestamp,
                 type: 'SOL', // 指明交易类型为 SOL
+                network: network ? network : "solana_mainnet"
             };
         }
 
@@ -189,25 +211,25 @@ async function getRecentSOLTransactions(recipient: string) {
 
 // HTTP 请求处理
 app.post('/monitor', async (req: any, res: any) => {
-    const { recipient, type } = req.body; // 从请求中获取 type 参数（USDC 或 SOL）
+    const { recipient, type, network } = req.body; // 新增 network 参数
     if (!recipient) {
         return res.status(400).json({ error: 'Recipient address is required.' });
     }
 
     await connectToDatabase(); // 连接数据库
-    console.log(`Monitoring ${type || 'USDC and SOL'} transactions for:`, recipient);
+    console.log(`Monitoring ${type || 'USDC and SOL'} transactions on ${network ? network : "solana_mainnet"} for:`, recipient);
     let responseSent = false; // Flag to track if a response has been sent
 
     const interval = setInterval(async () => {
         let usdcTransaction, solTransaction;
         if (type === 'USDC') {
-            usdcTransaction = await getRecentUSDCTransactions(recipient);
+            usdcTransaction = await getRecentUSDCTransactions(recipient, network);
         } else if (type === 'SOL') {
-            solTransaction = await getRecentSOLTransactions(recipient);
+            solTransaction = await getRecentSOLTransactions(recipient, network);
         } else {
             // 如果没有指定类型，先查询 USDC，如果没有找到再查询 SOL
-            usdcTransaction = await getRecentUSDCTransactions(recipient);
-            solTransaction = await getRecentSOLTransactions(recipient);
+            usdcTransaction = await getRecentUSDCTransactions(recipient, network);
+            solTransaction = await getRecentSOLTransactions(recipient, network);
         }
         const newTransactions = [];
 
@@ -252,10 +274,10 @@ app.post('/monitor', async (req: any, res: any) => {
         clearInterval(interval);
         if (!responseSent) { // Check again before sending the timeout response
             console.log('Monitoring ended due to timeout for:', recipient);
-            res.json({ action: "NoLatestTx", error: `No new ${type} transaction, the latest ${type} transaction already returned before and stored in mongoDB` });
+            res.json({ action: "NoLatestTx", error: `No new ${type} ${network? network : "solana_mainnet"} transaction, the latest ${type} ${network} transaction already returned before and stored in mongoDB` });
             responseSent = true; // Set flag to true
         }
-    }, 1 * 60 * 1000); // 2 分钟
+    }, 1 * 60 * 1000); // 1 分钟
 });
 
 const PORT = 6012;
