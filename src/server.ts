@@ -252,7 +252,7 @@ app.post('/monitor', async (req: any, res: any) => {
         clearInterval(interval);
         if (!responseSent) { // Check again before sending the timeout response
             console.log('Monitoring ended due to timeout for:', recipient);
-            res.json({ action: "NoLatestTx", transactions: `No new ${type} transaction, the latest ${type} transaction already returned before and stored in mongoDB` });
+            res.json({ action: "NoLatestTx", error: `No new ${type} transaction, the latest ${type} transaction already returned before and stored in mongoDB` });
             responseSent = true; // Set flag to true
         }
     }, 1 * 60 * 1000); // 2 分钟
